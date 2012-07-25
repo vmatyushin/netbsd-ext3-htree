@@ -361,11 +361,8 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 {
 	struct ext2fs_htree_lookup_info info;
 	struct ext2fs_htree_entry *leaf_node;
-// 	struct ext2fs_direct *ep, *top;
 	struct m_ext2fs *m_fs;
 	struct buf *bp;
-// 	doff_t entryoffset = 0;
-// 	doff_t prevoffset = 0;
 	uint32_t blknum;
 	uint32_t dirhash;
 	uint8_t hash_version;
@@ -408,29 +405,6 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 
 		// XXX what if ulr_offset != 0
 		results->ulr_offset = blknum * m_fs->e2fs_bsize;
-		/*
-	// 	printf("ok, blk %u\n", blknum);
-		ep = (struct ext2fs_direct *) bp->b_data;
-		top = (struct ext2fs_direct *) ((char *) ep +
-			m_fs->e2fs_bsize - EXT2FS_DIRSIZ(0));
-
-		while (ep < top) {
-			if (fs2h32(ep->e2d_ino) != 0 &&
-				namelen == ep->e2d_namlen &&
-				!memcmp(name, ep->e2d_name,
-					(unsigned) namelen)) {
-				*offp = entryoffset;
-				*prevoffp = prevoffset;
-				*bpp = bp;
-				ext2fs_htree_release(&info);
-				return (EXT2_HTREE_LOOKUP_FOUND);
-			}
-			prevoffset = entryoffset;
-			entryoffset += fs2h16(ep->e2d_reclen);
-			ep = (struct ext2fs_direct *)
-				((char *) bp->b_data + entryoffset);
-		}
-		*/
 		*offp = 0;
 		*prevoffp = results->ulr_offset;
 		*endusefulp = results->ulr_offset;
@@ -439,8 +413,6 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 			ss->slotfreespace = 0;
 		}
 
-// 		printf("results: %d %d %d %d %d\n", results->ulr_count, results->ulr_endoff,
-// 		       results->ulr_diroff, results->ulr_offset, results->ulr_reclen);
 		if (ext2fs_search_dirblock(vp, bp->b_data, &found,
 		       name, namelen, offp, prevoffp, endusefulp,
 		       ss, results) != 0) {
@@ -494,25 +466,11 @@ ext2fs_append_entry(char *block, uint32_t blksize,
 {
 	uint16_t entry_len;
 
-	char buf[150] = {0};
-	memset(buf, 0, 150);
-	memcpy(buf, last_entry->e2d_name, last_entry->e2d_namlen);
-	snprintf(buf + last_entry->e2d_namlen, 100, ": LAST ENTRY %u [%u]\n",
-		 last_entry->e2d_reclen, last_entry->e2d_ino);
-	printf("%s", buf);
-	
 	entry_len = EXT2FS_DIRSIZ(last_entry->e2d_namlen);
 	last_entry->e2d_reclen = h2fs16(entry_len);
-	
-	printf("new reclen %u\n", last_entry->e2d_reclen);
-	printf("adding entry %u %u\n", new_entry->e2d_reclen, new_entry->e2d_ino);
-	
 	last_entry = (struct ext2fs_direct *) ((char *) last_entry + entry_len);
 	entry_len = EXT2FS_DIRSIZ(new_entry->e2d_namlen);
 	new_entry->e2d_reclen = h2fs16(block + blksize - (char *) last_entry);
-	
-	printf("new entry reclen %u\n", new_entry->e2d_reclen);
-	
 	memcpy(last_entry, new_entry, entry_len);
 }
 
@@ -528,10 +486,10 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 	int move_cnt = 0;
 	int size = 0;
 	int i, k;
+	uint32_t offset;
 	uint16_t entry_len = 0;
 	uint32_t entry_hash;
 	struct ext2fs_direct *ep, *last;
-	struct ext2fs_direct *prev;
 	char *dest;
 	struct ext2fs_htree_sort_entry *sort_info, dummy;
 
@@ -546,7 +504,7 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 	ext2fs_htree_hash(entry->e2d_name, entry->e2d_namlen, hash_seed,
 			  hash_version, &entry_hash, NULL);
 
-	printf("hash 0x%08X\n", entry_hash);
+// 	printf("hash 0x%08X\n", entry_hash);
 	/* Fill in directory entry sort descriptors. */
 	while ((char *) ep < block1 + blksize) {
 		if (fs2h32(ep->e2d_ino) != 0 && ep->e2d_namlen != 0) {
@@ -561,12 +519,12 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 		ep = (struct ext2fs_direct *)
 			((char *) ep + fs2h16(ep->e2d_reclen));
 	}
-	printf("filled\n");
+// 	printf("filled\n");
 
 	/* Sort directory entry descriptors by name hash value. */
 	kheapsort(sort_info, entry_cnt, sizeof(struct ext2fs_htree_sort_entry),
 		  ext2fs_htree_cmp_sort_entry, &dummy);
-	printf("sorted\n");
+// 	printf("sorted\n");
 	/* Count the number of entries to move to directory block 2. */
 	for (i = entry_cnt - 1; i >= 0; i--) {
 		if (sort_info[i].h_size + size > blksize / 2)
@@ -583,45 +541,45 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 		*split_hash += 1;
 	}
 	
-	printf("%d entries:\n", entry_cnt);
-	ep = (struct ext2fs_direct *) ((char *) block1);
-	for (k = 0; k < entry_cnt; k++) {
-		char buf[150] = {0};
-		memset(buf, 0, 150);
-		memcpy(buf, ep->e2d_name, ep->e2d_namlen);
-		snprintf(buf + ep->e2d_namlen, 100, ": %d %u [%u]\n", k, ep->e2d_reclen, ep->e2d_ino);
-		printf("%s", buf);
-		if (ep->e2d_reclen == 0)
-		{
-			printf("RECLEN = 0\n");
-			break;
-		}
-// 		if (ep->e2d_ino == 0)
+// 	printf("%d entries:\n", entry_cnt);
+// 	ep = (struct ext2fs_direct *) ((char *) block1);
+// 	for (k = 0; k < entry_cnt; k++) {
+// 		char buf[150] = {0};
+// 		memset(buf, 0, 150);
+// 		memcpy(buf, ep->e2d_name, ep->e2d_namlen);
+// 		snprintf(buf + ep->e2d_namlen, 100, ": %d %u [%u]\n", k, ep->e2d_reclen, ep->e2d_ino);
+// 		printf("%s", buf);
+// 		if (ep->e2d_reclen == 0)
 // 		{
-// 			printf("INO = 0\n");
+// 			printf("RECLEN = 0\n");
 // 			break;
 // 		}
-		if (k > 2000) {
-			printf("OVERFLOW\n");
-			break;
-		}
-		ep = (struct ext2fs_direct *) ((char *) ep + ep->e2d_reclen);
-	}
-	
-	printf("\nagain in hash order:\n");
-	for (k = 0; k < entry_cnt; k++) {
-		ep = (struct ext2fs_direct *) ((char *) block1 +
-			sort_info[k].h_offset);
-		char buf[100] = {0};
-		snprintf(buf, 98, "%d: %u [%u] %s\n", k, ep->e2d_reclen, ep->e2d_ino, ep->e2d_name);
-		printf("%s", buf);
-		if (k > 2000) {
-			printf("OVERFLOW\n");
-			break;
-		}
-	}
+// // 		if (ep->e2d_ino == 0)
+// // 		{
+// // 			printf("INO = 0\n");
+// // 			break;
+// // 		}
+// 		if (k > 2000) {
+// 			printf("OVERFLOW\n");
+// 			break;
+// 		}
+// 		ep = (struct ext2fs_direct *) ((char *) ep + ep->e2d_reclen);
+// 	}
+// 	
+// 	printf("\nagain in hash order:\n");
+// 	for (k = 0; k < entry_cnt; k++) {
+// 		ep = (struct ext2fs_direct *) ((char *) block1 +
+// 			sort_info[k].h_offset);
+// 		char buf[100] = {0};
+// 		snprintf(buf, 98, "%d: %u [%u] %s\n", k, ep->e2d_reclen, ep->e2d_ino, ep->e2d_name);
+// 		printf("%s", buf);
+// 		if (k > 2000) {
+// 			printf("OVERFLOW\n");
+// 			break;
+// 		}
+// 	}
 
-	printf("\nmoving:\n");
+// 	printf("\nmoving:\n");
 	/* Move half of directory entries from block 1 to block 2. */
 	for (k = i + 1; k < entry_cnt; k++) {
 		ep = (struct ext2fs_direct *) ((char *) block1 +
@@ -629,104 +587,35 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 		entry_len = EXT2FS_DIRSIZ(ep->e2d_namlen);
 		memcpy(dest, ep, entry_len);
 		((struct ext2fs_direct *) dest)->e2d_reclen = h2fs16(entry_len);
-		printf("%d moved %s %u [%u]\n", k,
-		       ((struct ext2fs_direct *) dest)->e2d_name,
-		       ((struct ext2fs_direct *) dest)->e2d_reclen,
-			((struct ext2fs_direct *) dest)->e2d_ino);
+// 		printf("%d moved %s %u [%u]\n", k,
+// 		       ((struct ext2fs_direct *) dest)->e2d_name,
+// 		       ((struct ext2fs_direct *) dest)->e2d_reclen,
+// 			((struct ext2fs_direct *) dest)->e2d_ino);
 		/* Mark directory entry as unused. */
 		ep->e2d_ino = 0;
 		dest += entry_len;
-
-
 
 		moved++;
 	}
 	dest -= entry_len;
 
-	printf("\nfirst block:\n");
-	ep = (struct ext2fs_direct *) block1;
-
-	last = ep;
-	k=0;
-	while ((char*)ep < (block1 + blksize)) {
-		char buf[150] = {0};
-		memset(buf, 0, 150);
-		memcpy(buf, ep->e2d_name, ep->e2d_namlen);
-		snprintf(buf + ep->e2d_namlen, 100, ": %d %u [%u]\n", k, ep->e2d_reclen, ep->e2d_ino);
-		printf("%s", buf);
-		k++;
-		
-		last = ep;
-		
-		ep = (struct ext2fs_direct *) ((char *) ep + ep->e2d_reclen);
-		if (k > 2000) {
-			printf("OVERFLOW\n");
-			break;
-		}
-	}
-	
-	printf("\nsecond block:\n");
-	ep = (struct ext2fs_direct *) block2;
-	k=0;
-// 	while ((char*)ep < (block2 + blksize)) {
-	for (k = 0; k < moved; k++) {
-		char buf[150] = {0};
-		memset(buf, 0, 150);
-		memcpy(buf, ep->e2d_name, ep->e2d_namlen);
-		snprintf(buf + ep->e2d_namlen, 100, ": %d %u [%u]\n", k, ep->e2d_reclen, ep->e2d_ino);
-		printf("%s", buf);
-// 		k++;
-		
-		
-		
-		
-		
-		
-		
-		if (k > 2000) {
-			printf("OVERFLOW\n");
-			break;
-		}
-		
-		ep = (struct ext2fs_direct *) ((char *) ep + ep->e2d_reclen);
-	}
-
-	// XXX bug here
 	/* Shrink directory entries in block 1. */
-	prev = last = ep = (struct ext2fs_direct *) block1;
-	while ((char *) ep < block1 + blksize) {
-		if (fs2h32(ep->e2d_ino) != 0 && ep->e2d_namlen != 0) {
-			entry_len = EXT2FS_DIRSIZ(ep->e2d_namlen);
-			if (ep > prev)
-				memmove(prev, ep, entry_len);
-			prev->e2d_reclen = h2fs16(entry_len);
-			last = prev;
-			prev = (struct ext2fs_direct*)((char*)prev + entry_len);
+	last = (struct ext2fs_direct *) block1;
+	entry_len = EXT2FS_DIRSIZ(last->e2d_namlen);
+	for (offset = fs2h16(last->e2d_reclen); offset < blksize; ) {
+		ep = (struct ext2fs_direct *) (block1 + offset);
+		offset += fs2h16(ep->e2d_reclen);
+		if (last->e2d_ino) {
+			/* trim the existing slot */
+			last->e2d_reclen = h2fs16(entry_len);
+			last = (struct ext2fs_direct *)((char *)last+entry_len);
 		}
-		ep = (struct ext2fs_direct *)
-			((char *) ep + fs2h16(ep->e2d_reclen));
+		entry_len = EXT2FS_DIRSIZ(ep->e2d_namlen);
+		memcpy((void *) last, (void *) ep, entry_len);
 	}
-
-// 	printf("\nshrinked block:\n");
-// 	ep = (struct ext2fs_direct *) block1;
-// 	k=0;
-// 	while ((char*)ep < (block1 + blksize)) {
-// 		char buf[150] = {0};
-// 		memset(buf, 0, 150);
-// 		memcpy(buf, ep->e2d_name, ep->e2d_namlen);
-// 		snprintf(buf + ep->e2d_namlen, 100, ": %d %u [%u]\n", k, ep->e2d_reclen, ep->e2d_ino);
-// 		printf("%s", buf);
-// 		k++;
-// 		
-// 		
-// // 		last = ep;
-// 		
-// 		
-// 		ep = (struct ext2fs_direct *) ((char *) ep + ep->e2d_reclen);
-// 	}
 
 	if (entry_hash >= *split_hash) {
-		printf("append %s %u %u to block2\n", entry->e2d_name, entry->e2d_reclen, entry->e2d_ino);
+// 		printf("append %s %u %u to block2\n", entry->e2d_name, entry->e2d_reclen, entry->e2d_ino);
 		/* Add entry to block 2. */
 		ext2fs_append_entry(block2, blksize,
 				    (struct ext2fs_direct *) dest, entry);
@@ -739,13 +628,13 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 // 			ep = (struct ext2fs_direct *) ((char *) ep + ep->e2d_reclen);
 // 		}
 
-		printf("last %s %u %u\n", last->e2d_name, last->e2d_reclen, last->e2d_ino);
+// 		printf("last %s %u %u\n", last->e2d_name, last->e2d_reclen, last->e2d_ino);
 		/* Adjust length field in last entry of block 1. */
 		last->e2d_reclen = h2fs16(block1 + blksize - (char *) last);
-		printf("last became %u\n", last->e2d_reclen);
+// 		printf("last became %u\n", last->e2d_reclen);
 		
 	} else {
-		printf("append %s %u %u to block1\n", entry->e2d_name, entry->e2d_reclen, entry->e2d_ino);
+// 		printf("append %s %u %u to block1\n", entry->e2d_name, entry->e2d_reclen, entry->e2d_ino);
 		
 		/* Add entry to block 1. */
 		ext2fs_append_entry(block1, blksize, last, entry);
@@ -758,15 +647,15 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 // 			ep = (struct ext2fs_direct *) ((char *) ep + ep->e2d_reclen);
 // 		}
 		
-		printf("last %s %u %u\n", ((struct ext2fs_direct *) dest)->e2d_name,
-			((struct ext2fs_direct *) dest)->e2d_reclen,
-		       ((struct ext2fs_direct *) dest)->e2d_ino);
+// 		printf("last %s %u %u\n", ((struct ext2fs_direct *) dest)->e2d_name,
+// 			((struct ext2fs_direct *) dest)->e2d_reclen,
+// 		       ((struct ext2fs_direct *) dest)->e2d_ino);
 		
 		/* Adjust length field in last entry of block 2. */
 		((struct ext2fs_direct *) dest)->e2d_reclen = h2fs16(block2 +
 								blksize - dest);
 		
-		printf("last became %u\n", ((struct ext2fs_direct *) dest)->e2d_reclen);
+// 		printf("last became %u\n", ((struct ext2fs_direct *) dest)->e2d_reclen);
 	}
 
 	return (0);

@@ -1011,14 +1011,10 @@ ext2fs_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	 */
 	newentrysize = EXT2FS_DIRSIZ(entry->e2d_namlen);
 	ep = (struct ext2fs_direct *) dirbuf;
-	
-	nep = (struct ext2fs_direct *) (dirbuf + ep->e2d_reclen);
-	
 	dsize = EXT2FS_DIRSIZ(ep->e2d_namlen);
 	spacefree = fs2h16(ep->e2d_reclen) - dsize;
 // 	printf("slot \"%s\", namlen %d, reclen %d\n", ep->e2d_name, ep->e2d_namlen, ep->e2d_reclen);
 	printf("slot namlen %d, reclen %d\n", ep->e2d_namlen, ep->e2d_reclen);
-// 	printf("next slot \"%s\", namlen %d, reclen %d\n", nep->e2d_name, nep->e2d_namlen, nep->e2d_reclen);
 	printf("%d %d %d\n", newentrysize, dsize, spacefree);
 	for (loc = fs2h16(ep->e2d_reclen); loc < ulr->ulr_count; ) {
 		nep = (struct ext2fs_direct *) (dirbuf + loc);
