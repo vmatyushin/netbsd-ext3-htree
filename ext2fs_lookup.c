@@ -1,4 +1,4 @@
-/*	$NetBSD: ext2fs_lookup.c,v 1.69 2012/03/16 08:39:54 hannken Exp $	*/
+/*	$NetBSD: ext2fs_lookup.c,v 1.70 2012/07/22 00:53:22 rmind Exp $	*/
 
 /*
  * Modified for NetBSD 1.2E
@@ -48,7 +48,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ext2fs_lookup.c,v 1.69 2012/03/16 08:39:54 hannken Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ext2fs_lookup.c,v 1.70 2012/07/22 00:53:22 rmind Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -280,7 +280,6 @@ ext2fs_lookup(void *v)
 	struct vnode *tdp;		/* returned by VFS_VGET */
 	doff_t enduseful;		/* pointer past last used dir slot */
 	u_long bmask;			/* block offset mask */
-// 	int namlen, error;
 	int error;
 	struct vnode **vpp = ap->a_vpp;
 	struct componentname *cnp = ap->a_cnp;
@@ -316,11 +315,7 @@ ext2fs_lookup(void *v)
 	if ((flags & ISLASTCN) && (vdp->v_mount->mnt_flag & MNT_RDONLY) &&
 	    (cnp->cn_nameiop == DELETE || cnp->cn_nameiop == RENAME))
 		return (EROFS);
-if (nameiop == CREATE) printf("create %s\n", cnp->cn_nameptr);
-// if (nameiop == CREATE && flags & ISLASTCN) printf("last component\n");
-if (nameiop == LOOKUP) printf("lookup %s\n", cnp->cn_nameptr);
-if (nameiop == DELETE) printf("delete %s\n", cnp->cn_nameptr);
-if (nameiop == RENAME) printf("rename %s\n", cnp->cn_nameptr);
+
 	/*
 	 * We now have a segment name to search for, and a directory to search.
 	 *
@@ -330,8 +325,7 @@ if (nameiop == RENAME) printf("rename %s\n", cnp->cn_nameptr);
 	 */
 	if ((error = cache_lookup(vdp, vpp, cnp)) >= 0)
 		return (error);
-	printf("not in cache %s\n", cnp->cn_nameptr);
-// if (nameiop == LOOKUP) printf("%s not in cache\n", cnp->cn_nameptr);
+
 	/*
 	 * Suppress search for slots unless creating
 	 * file and at end of pathname, in which case
@@ -365,11 +359,9 @@ if (nameiop == RENAME) printf("rename %s\n", cnp->cn_nameptr);
 		results->ulr_offset = 0;
 		numdirpasses = 1;
 	} else {
-		printf("ulr_offset <- %d\n", results->ulr_diroff);
 		results->ulr_offset = results->ulr_diroff;
 		if ((entryoffsetinblock = results->ulr_offset & bmask) &&
-		    (error = ext2fs_blkatoff(vdp, (off_t)results->ulr_offset,
-					     NULL, &bp)))
+		    (error = ext2fs_blkatoff(vdp, (off_t)results->ulr_offset, NULL, &bp)))
 			return (error);
 		numdirpasses = 2;
 		nchstats.ncs_2passes++;
@@ -379,7 +371,6 @@ if (nameiop == RENAME) printf("rename %s\n", cnp->cn_nameptr);
 
 	/* Perform entry lookup using HTree directory index. */
 	if (ext2fs_htree_has_idx(dp)) {
-// 		printf("idx %s\n", cnp->cn_nameptr);
 		doff_t entry_offset;
 		error = ext2fs_htree_lookup(vdp,
 					    cnp->cn_nameptr, cnp->cn_namelen,
@@ -387,7 +378,6 @@ if (nameiop == RENAME) printf("rename %s\n", cnp->cn_nameptr);
 					    &bp, &ss, results);
 		switch (error) {
 		case EXT2_HTREE_LOOKUP_FOUND:
-			printf("FOUND, entry %u, ulr %u, prev %u\n", entry_offset, results->ulr_offset, prevoff);
 // 			results->ulr_offset = entry_offset;
 			ep = (struct ext2fs_direct *) ((char *) bp->b_data +
 							(entry_offset & bmask));
@@ -395,7 +385,6 @@ if (nameiop == RENAME) printf("rename %s\n", cnp->cn_nameptr);
 			goto htree_idx_found;
 			break;
 		case EXT2_HTREE_LOOKUP_NOT_FOUND:
-// 			printf("IDX NOT FOUND\n");
 			goto htree_idx_not_found;
 			break;
 		default:
@@ -414,8 +403,8 @@ searchloop:
 		if ((results->ulr_offset & bmask) == 0) {
 			if (bp != NULL)
 				brelse(bp, 0);
-			error = ext2fs_blkatoff(vdp, (off_t)results->ulr_offset,
-						NULL, &bp);
+			error = ext2fs_blkatoff(vdp, (off_t)results->ulr_offset, NULL,
+			    &bp);
 			if (error != 0)
 				return (error);
 			entryoffsetinblock = 0;
@@ -461,8 +450,6 @@ htree_idx_found:
 htree_idx_not_found:
 	if (bp != NULL)
 		brelse(bp, 0);
-// 	if (nameiop == CREATE) printf("create not found\n");
-// 	if (nameiop == LOOKUP) printf("lookup not found\n");
 	/*
 	 * If creating, and at end of pathname and current
 	 * directory has not been removed, then can consider
@@ -470,7 +457,6 @@ htree_idx_not_found:
 	 */
 	if ((nameiop == CREATE || nameiop == RENAME) &&
 	    (flags & ISLASTCN) && dp->i_e2fs_nlink != 0) {
-		printf("last & create\n");
 		/*
 		 * Access for write is interpreted as allowing
 		 * creation of files in the directory.
@@ -491,14 +477,11 @@ htree_idx_not_found:
 			results->ulr_offset = roundup(ext2fs_size(dp), dirblksiz);
 			results->ulr_count = 0;
 			enduseful = results->ulr_offset;
-			printf("slotstatus none\n");
 		} else {
 			results->ulr_offset = ss.slotoffset;
 			results->ulr_count = ss.slotsize;
-			printf("slotstatus ulr_offset %d, ulr_count %d\n", ss.slotoffset, ss.slotsize);
 			if (enduseful < ss.slotoffset + ss.slotsize) {
 				enduseful = ss.slotoffset + ss.slotsize;
-				printf("enduseful ss+ %d\n", enduseful);
 			}
 		}
 		results->ulr_endoff = roundup(enduseful, dirblksiz);
@@ -518,14 +501,13 @@ htree_idx_not_found:
 		 */
 		return (EJUSTRETURN);
 	}
-// 	if (nameiop == CREATE) printf("insert to cache\n");
 	/*
 	 * Insert name into cache (as non-existent) if appropriate.
 	 */
-	if ((cnp->cn_flags & MAKEENTRY) && nameiop != CREATE)
+	if (nameiop != CREATE) {
 		cache_enter(vdp, *vpp, cnp);
-// 	printf("ENOENT\n");
-	return (ENOENT);
+	}
+	return ENOENT;
 
 found:
 	if (numdirpasses == 2)
@@ -554,8 +536,7 @@ found:
 	 */
 	if ((flags & ISLASTCN) && nameiop == LOOKUP)
 		results->ulr_diroff = results->ulr_offset &~ (dirblksiz - 1);
-// if (nameiop == CREATE) printf("create found\n");
-// if (nameiop == LOOKUP) printf("lookup found\n");
+
 	/*
 	 * If deleting, and at end of pathname, return
 	 * parameters which can be used to remove file.
@@ -568,15 +549,10 @@ found:
 		 * is a previous entry in this block) in results->ulr_count.
 		 * Save directory inode pointer in ndp->ni_dvp for dirremove().
 		 */
-		printf("nameiop = DELETE, offset %u, prev %u\n", results->ulr_offset, prevoff);
-		if ((results->ulr_offset & (dirblksiz - 1)) == 0) {
-			printf("count 0\n");
+		if ((results->ulr_offset & (dirblksiz - 1)) == 0)
 			results->ulr_count = 0;
-		}
-		else {
+		else
 			results->ulr_count = results->ulr_offset - prevoff;
-			printf("count = %u\n", results->ulr_count);
-		}
 		if (dp->i_number == foundino) {
 			vref(vdp);
 			tdp = vdp;
@@ -684,18 +660,12 @@ found:
 		if (error)
 			return (error);
 		*vpp = tdp;
-// 		if (nameiop == CREATE) printf("CREATE get ino %lu\n", foundino);
-// 		if (nameiop == LOOKUP) printf("LOOKUP get ino %lu\n", foundino);
 	}
 
 	/*
 	 * Insert name into cache if appropriate.
 	 */
-	if (cnp->cn_flags & MAKEENTRY) {
-// 		if (nameiop == CREATE) printf("CREATE cache enter\n");
-// 		if (nameiop == LOOKUP) printf("LOOKUP cache enter\n");
-		cache_enter(vdp, *vpp, cnp);
-	}
+	cache_enter(vdp, *vpp, cnp);
 	return (0);
 }
 
@@ -712,7 +682,6 @@ ext2fs_search_dirblock(struct vnode *vdp, void *blockdata, int *foundp,
 	int entryoffsetinblock = *offp;
 	int namlen;
 
-// 	printf("start %d\n", entryoffsetinblock);
 	ep = (struct ext2fs_direct *) ((char *) blockdata + entryoffsetinblock);
 	top = (struct ext2fs_direct *) ((char *) blockdata +
 			dirblksiz - EXT2FS_DIRSIZ(0));
@@ -780,23 +749,12 @@ ext2fs_search_dirblock(struct vnode *vdp, void *blockdata, int *foundp,
 				*/
 // 				*offp = entryoffsetinblock;
 				*foundp = 1;
-				printf("search: found %s at %u, status %d, slotoffset %d, slotsize %d, ulr_offset %u\n",
-				       name, entryoffsetinblock, ss->slotstatus, ss->slotoffset, ss->slotsize, results->ulr_offset);
 				return 0;
 			}
 		}
 		*prevoffp = results->ulr_offset;
 		results->ulr_offset += fs2h16(ep->e2d_reclen);
 		entryoffsetinblock += fs2h16(ep->e2d_reclen);
-		
-		
-		
-// 		char buf[150] = {0};
-// 		memset(buf, 0, 150);
-// 		sprintf(buf, "%06u [%08u] ", ep->e2d_reclen, ep->e2d_ino);
-// 		memcpy(buf+strlen(buf), ep->e2d_name, ep->e2d_namlen);
-// 		printf("searchin %s\n", buf);
-		
 		*offp = entryoffsetinblock;
 		if (ep->e2d_ino)
 			*endusefulp = results->ulr_offset;
@@ -806,9 +764,6 @@ ext2fs_search_dirblock(struct vnode *vdp, void *blockdata, int *foundp,
 		ep = (struct ext2fs_direct *)
 			((char *) blockdata + entryoffsetinblock);
 	}
-	printf("search: not found %s at status %d, slotoffset %d, slotsize %d, "
-		"slotneeded %d, ulr_offset %u\n", name, ss->slotstatus, ss->slotoffset,
-		ss->slotsize, ss->slotneeded, results->ulr_offset);
 
 	return 0;
 }
@@ -899,20 +854,7 @@ ext2fs_direnter(struct inode *ip, struct vnode *dvp,
 	memcpy(newdir.e2d_name, cnp->cn_nameptr, (unsigned)cnp->cn_namelen + 1);
 	newentrysize = EXT2FS_DIRSIZ(cnp->cn_namelen);
 
-// 	if (ext2fs_htree_has_idx(dp)) {
-// 		printf("direnter %p idx\n", dp);
-// 		return 0;
-// 	} else {
-// 		uint64_t len = ext2fs_size(dp);
-// 		printf("size %lu, blk size %d, blk num %lu\n",
-// 		       len, dirblksiz, len / dirblksiz);
-// 		ext2fs_htree_create_index(dvp);
-// 	}
-
-	/*  */
-// 	printf("add to %d\n", ulr->ulr_offset);
 	if (ext2fs_htree_has_idx(dp)) {
-		printf("idx\n");
 		return ext2fs_htree_add_entry(dvp, ulr, &newdir, cnp);
 		// XXX если фейл то enduseful установить в ext2fs_size
 	}
@@ -924,7 +866,6 @@ ext2fs_direnter(struct inode *ip, struct vnode *dvp,
 			 * HTree index is created for a directory
 			 * with more than one block.
 			 */
-			printf("TIME TO IDX!\n");
 			return ext2fs_htree_create_index(dvp, cnp, &newdir);
 		}
 	}
@@ -1001,7 +942,6 @@ ext2fs_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	if ((error = ext2fs_blkatoff(dvp, (off_t)ulr->ulr_offset,
 		&dirbuf, &bp)) != 0)
 		return (error);
-	printf("off %d\n", ulr->ulr_offset);
 	/*
 	 * Find space for the new entry. In the simple case, the entry at
 	 * offset base will have the space. If it does not, then namei
@@ -1013,9 +953,6 @@ ext2fs_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	ep = (struct ext2fs_direct *) dirbuf;
 	dsize = EXT2FS_DIRSIZ(ep->e2d_namlen);
 	spacefree = fs2h16(ep->e2d_reclen) - dsize;
-// 	printf("slot \"%s\", namlen %d, reclen %d\n", ep->e2d_name, ep->e2d_namlen, ep->e2d_reclen);
-	printf("slot namlen %d, reclen %d\n", ep->e2d_namlen, ep->e2d_reclen);
-	printf("%d %d %d\n", newentrysize, dsize, spacefree);
 	for (loc = fs2h16(ep->e2d_reclen); loc < ulr->ulr_count; ) {
 		nep = (struct ext2fs_direct *) (dirbuf + loc);
 		if (ep->e2d_ino) {
@@ -1082,20 +1019,15 @@ ext2fs_dirremove(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	int error;
 
 	dp = VTOI(dvp);
-	printf("dirremove %s\n", cnp->cn_nameptr);
 
 	if (ulr->ulr_count == 0) {
-		printf("ulr_count 0, offset %u, ino %u -> 0\n",
-		       ulr->ulr_offset, ep->e2d_ino);
 		/*
 		 * First entry in block: set d_ino to zero.
 		 */
 		error = ext2fs_blkatoff(dvp, (off_t)ulr->ulr_offset,
 		    (void *)&ep, &bp);
-		if (error != 0) {
-			printf("blkatoff error %d\n", error);
+		if (error != 0)
 			return (error);
-		}
 		ep->e2d_ino = 0;
 		error = VOP_BWRITE(bp->b_vp, bp);
 		dp->i_flag |= IN_CHANGE | IN_UPDATE;
@@ -1104,15 +1036,11 @@ ext2fs_dirremove(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	/*
 	 * Collapse new free space into previous entry.
 	 */
-	printf("ulr_count %u, ulr_offset %u, blkatoff %u\n",
-	       ulr->ulr_count, ulr->ulr_offset,
-		(ulr->ulr_offset - ulr->ulr_count));
 	error = ext2fs_blkatoff(dvp, (off_t)(ulr->ulr_offset - ulr->ulr_count),
 	    (void *)&ep, &bp);
 	if (error != 0)
 		return (error);
 	ep->e2d_reclen = h2fs16(fs2h16(ep->e2d_reclen) + ulr->ulr_reclen);
-	printf("reclen %u\n", ep->e2d_reclen);
 	error = VOP_BWRITE(bp->b_vp, bp);
 	dp->i_flag |= IN_CHANGE | IN_UPDATE;
 	return (error);
