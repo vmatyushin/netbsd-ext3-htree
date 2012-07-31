@@ -395,7 +395,7 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 	do {
 		leaf_node = info.h_levels[info.h_levels_num - 1].h_entry;
 		blknum = ext2fs_htree_get_block(leaf_node);
-		printf("look %u %u\n", blknum, blknum * m_fs->e2fs_bsize);
+		//printf("look %u %u\n", blknum, blknum * m_fs->e2fs_bsize);
 		if (ext2fs_blkatoff(vp, blknum * m_fs->e2fs_bsize,
 			NULL, &bp) != 0) {
 			printf("lookup: blkatoff error\n");
@@ -422,7 +422,7 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 		}
 
 		if (found) {
-			printf("idx found: %s %d %d %d\n", name, *offp, *prevoffp, *endusefulp);
+			//printf("idx found: %s %d %d %d\n", name, *offp, *prevoffp, *endusefulp);
 			*bpp = bp;
 			ext2fs_htree_release(&info);
 			return (EXT2_HTREE_LOOKUP_FOUND);
@@ -533,7 +533,7 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 		move_cnt++;
 	}
 
-	printf("split at %d\n", i + 1);
+	//printf("split at %d\n", i + 1);
 	*split_hash = sort_info[i + 1].h_hash;
 	/* Set collision bit. */
 	if (*split_hash == sort_info[i].h_hash) {
@@ -820,12 +820,12 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	m_fs = ip->i_e2fs;
 	blksize = m_fs->e2fs_bsize;
 
-	printf("add at offset %u\n", ulr->ulr_offset);
+	//printf("add at offset %u\n", ulr->ulr_offset);
 	if (ulr->ulr_count != 0) {
 		printf("idx add cnt %s %u\n", entry->e2d_name, ulr->ulr_count);
 		return ext2fs_add_entry(dvp, ulr, entry);
 	}
-	printf("idx add no space\n");
+	//printf("idx add no space\n");
 
 	memset(&info, 0, sizeof(info));
 	if (ext2fs_htree_find_leaf(dvp, entry->e2d_name, entry->e2d_namlen,
@@ -841,7 +841,7 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 
 	leaf_node = info.h_levels[info.h_levels_num - 1].h_entry;
 	blknum = ext2fs_htree_get_block(leaf_node);
-	printf("look %u %u\n", blknum, blknum * blksize);
+	//printf("look %u %u\n", blknum, blknum * blksize);
 	if ((error = ext2fs_blkatoff(dvp, blknum * blksize,
 		NULL, &bp)) != 0) {
 		printf("lookup: blkatoff error\n");

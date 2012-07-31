@@ -77,6 +77,7 @@ struct uio;
 struct vnode;
 struct mbuf;
 struct componentname;
+struct ufs_lookup_results;
 struct ext2fs_direct;
 struct ext2fs_searchslot;
 

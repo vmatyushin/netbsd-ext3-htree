@@ -378,7 +378,6 @@ ext2fs_lookup(void *v)
 					    &bp, &ss, results);
 		switch (error) {
 		case EXT2_HTREE_LOOKUP_FOUND:
-// 			results->ulr_offset = entry_offset;
 			ep = (struct ext2fs_direct *) ((char *) bp->b_data +
 							(entry_offset & bmask));
 			numdirpasses = 1;
@@ -828,16 +827,11 @@ ext2fs_direnter(struct inode *ip, struct vnode *dvp,
 		const struct ufs_lookup_results *ulr,
 		struct componentname *cnp)
 {
-// 	struct ext2fs_direct *ep, *nep;
 	struct inode *dp;
-// 	struct buf *bp;
 	struct ext2fs_direct newdir;
 	struct iovec aiov;
 	struct uio auio;
-// 	u_int dsize;
 	int error, newentrysize;
-// 	int loc, newentrysize, spacefree;
-// 	char *dirbuf;
 	struct ufsmount *ump = VFSTOUFS(dvp->v_mount);
 	int dirblksiz = ump->um_dirblksiz;
 
