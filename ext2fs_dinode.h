@@ -154,7 +154,7 @@ struct ext2fs_dinode {
 #define EXT2_APPEND		0x00000020 /* writes to file may only append */
 #define EXT2_NODUMP		0x00000040	/* do not dump file */
 
-#define EXT2_HTREE  		0x00001000      /* htree-indexed directory */
+#define EXT2_HTREE  		0x00001000      /* HTree-indexed directory */
 
 /* Size of on-disk inode. */
 #define EXT2_REV0_DINODE_SIZE	sizeof(struct ext2fs_dinode)

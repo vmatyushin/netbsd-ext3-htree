@@ -293,7 +293,7 @@ ext2fs_lookup(void *v)
 	int entry_found = 0;
 
 	flags = cnp->cn_flags;
-
+	bmask = vdp->v_mount->mnt_stat.f_iosize - 1;
 	bp = NULL;
 	ss.slotoffset = -1;
 	*vpp = NULL;
@@ -339,9 +339,39 @@ ext2fs_lookup(void *v)
 		ss.slotstatus = NONE;
 		ss.slotneeded = EXT2FS_DIRSIZ(cnp->cn_namelen);
 	}
-	
-	bmask = vdp->v_mount->mnt_stat.f_iosize - 1;
-	enduseful = 0;
+
+	/*
+	 * Perform entry lookup using HTree directory index.
+	 * Perform linear search for '.' and '..' entries.
+	 */
+	if (!((cnp->cn_namelen <= 2) && (cnp->cn_nameptr[0] == '.') &&
+		((cnp->cn_nameptr[1] == '.') || (cnp->cn_nameptr[1] == 0))) &&
+		ext2fs_htree_has_idx(dp)) {
+		doff_t entry_offset;
+		error = ext2fs_htree_lookup(vdp,
+					    cnp->cn_nameptr, cnp->cn_namelen,
+					    &entry_offset, &prevoff, &enduseful,
+					    &bp, &ss, results);
+		switch (error) {
+		case EXT2_HTREE_LOOKUP_FOUND:
+			ep = (struct ext2fs_direct *) ((char *) bp->b_data +
+							(entry_offset & bmask));
+			numdirpasses = 1;
+			goto htree_idx_found;
+			break;
+		case EXT2_HTREE_LOOKUP_NOT_FOUND:
+			goto htree_idx_not_found;
+			break;
+		case EXT2_HTREE_LOOKUP_ERROR:
+			/* HTree lookup failed, perform linear search. */
+			dp->i_e2fs_flags &= ~EXT2_HTREE;
+			dp->i_flag |= IN_CHANGE | IN_UPDATE;
+			break;
+		default:
+			break;
+		}
+	}
+
 	/*
 	 * If there is cached information on a previous search of
 	 * this directory, pick up where we last left off.
@@ -361,36 +391,15 @@ ext2fs_lookup(void *v)
 	} else {
 		results->ulr_offset = results->ulr_diroff;
 		if ((entryoffsetinblock = results->ulr_offset & bmask) &&
-		    (error = ext2fs_blkatoff(vdp, (off_t)results->ulr_offset, NULL, &bp)))
+		    (error = ext2fs_blkatoff(vdp, (off_t) results->ulr_offset,
+					     NULL, &bp)))
 			return (error);
 		numdirpasses = 2;
 		nchstats.ncs_2passes++;
 	}
 	prevoff = results->ulr_offset;
 	endsearch = roundup(ext2fs_size(dp), dirblksiz);
-
-	/* Perform entry lookup using HTree directory index. */
-	if (ext2fs_htree_has_idx(dp)) {
-		doff_t entry_offset;
-		error = ext2fs_htree_lookup(vdp,
-					    cnp->cn_nameptr, cnp->cn_namelen,
-					    &entry_offset, &prevoff, &enduseful,
-					    &bp, &ss, results);
-		switch (error) {
-		case EXT2_HTREE_LOOKUP_FOUND:
-			ep = (struct ext2fs_direct *) ((char *) bp->b_data +
-							(entry_offset & bmask));
-			numdirpasses = 1;
-			goto htree_idx_found;
-			break;
-		case EXT2_HTREE_LOOKUP_NOT_FOUND:
-			goto htree_idx_not_found;
-			break;
-		default:
-			/* HTree lookup failed, perform linear search. */
-			break;
-		}
-	}
+	enduseful = 0;
 
 searchloop:
 	while (results->ulr_offset < endsearch) {
@@ -399,21 +408,18 @@ searchloop:
 		/*
 		 * If necessary, get the next directory block.
 		 */
-		if ((results->ulr_offset & bmask) == 0) {
-			if (bp != NULL)
-				brelse(bp, 0);
-			error = ext2fs_blkatoff(vdp, (off_t)results->ulr_offset, NULL,
-			    &bp);
-			if (error != 0)
-				return (error);
-			entryoffsetinblock = 0;
-		}
+		if (bp != NULL)
+			brelse(bp, 0);
+		error = ext2fs_blkatoff(vdp, (off_t) results->ulr_offset,
+					NULL, &bp);
+		if (error != 0)
+			return (error);
+		entryoffsetinblock = 0;
 		/*
 		 * If still looking for a slot, and at a dirblksize
 		 * boundary, have to start looking for free space again.
 		 */
-		if (ss.slotstatus == NONE &&
-		    (entryoffsetinblock & (dirblksiz - 1)) == 0) {
+		if (ss.slotstatus == NONE) {
 			ss.slotoffset = -1;
 			ss.slotfreespace = 0;
 		}
@@ -426,7 +432,6 @@ searchloop:
 			return (error);
 		}
 		if (entry_found) {
-			results->ulr_offset = entryoffsetinblock;
 			ep = (struct ext2fs_direct *) ((char *) bp->b_data +
 				(entryoffsetinblock & bmask));
 htree_idx_found:
@@ -479,9 +484,8 @@ htree_idx_not_found:
 		} else {
 			results->ulr_offset = ss.slotoffset;
 			results->ulr_count = ss.slotsize;
-			if (enduseful < ss.slotoffset + ss.slotsize) {
+			if (enduseful < ss.slotoffset + ss.slotsize)
 				enduseful = ss.slotoffset + ss.slotsize;
-			}
 		}
 		results->ulr_endoff = roundup(enduseful, dirblksiz);
 #if 0
@@ -746,7 +750,6 @@ ext2fs_search_dirblock(struct vnode *vdp, void *blockdata, int *foundp,
 				* reclen in ndp->ni_ufs area, and release
 				* directory buffer.
 				*/
-// 				*offp = entryoffsetinblock;
 				*foundp = 1;
 				return 0;
 			}
@@ -758,7 +761,7 @@ ext2fs_search_dirblock(struct vnode *vdp, void *blockdata, int *foundp,
 		if (ep->e2d_ino)
 			*endusefulp = results->ulr_offset;
 		/*
-		 * Get pointer to next entry.
+		 * Get pointer to the next entry.
 		 */
 		ep = (struct ext2fs_direct *)
 			((char *) blockdata + entryoffsetinblock);
@@ -849,16 +852,20 @@ ext2fs_direnter(struct inode *ip, struct vnode *dvp,
 	newentrysize = EXT2FS_DIRSIZ(cnp->cn_namelen);
 
 	if (ext2fs_htree_has_idx(dp)) {
-		return ext2fs_htree_add_entry(dvp, ulr, &newdir, cnp);
-		// XXX если фейл то enduseful установить в ext2fs_size
+		error = ext2fs_htree_add_entry(dvp, ulr, &newdir, cnp);
+		if (error) {
+			VTOI(dvp)->i_e2fs_flags &= ~EXT2_HTREE;
+			VTOI(dvp)->i_flag |= IN_CHANGE | IN_UPDATE;
+		}
+		return (error);
 	}
 
 	if (ip->i_e2fs->e2fs.e2fs_features_compat & EXT2F_COMPAT_HTREE) {
 		if ((ext2fs_size(dp) / dirblksiz == 1) &&
-			(ulr->ulr_offset >= dirblksiz)) {
+			(ulr->ulr_offset == dirblksiz)) {
 			/*
 			 * HTree index is created for a directory
-			 * with more than one block.
+			 * when one block is not enough to fit its entries.
 			 */
 			return ext2fs_htree_create_index(dvp, cnp, &newdir);
 		}
@@ -986,6 +993,8 @@ ext2fs_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	}
 	memcpy((void *) ep, (void *) entry, (u_int) newentrysize);
 	error = VOP_BWRITE(bp->b_vp, bp);
+	if (error)
+		return (error);
 	dp->i_flag |= IN_CHANGE | IN_UPDATE;
 
 	return (0);

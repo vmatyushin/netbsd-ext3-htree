@@ -403,7 +403,6 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 			return (EXT2_HTREE_LOOKUP_ERROR);
 		}
 
-		// XXX what if ulr_offset != 0
 		results->ulr_offset = blknum * m_fs->e2fs_bsize;
 		*offp = 0;
 		*prevoffp = results->ulr_offset;
@@ -825,7 +824,7 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 		printf("idx add cnt %s %u\n", entry->e2d_name, ulr->ulr_count);
 		return ext2fs_add_entry(dvp, ulr, entry);
 	}
-	//printf("idx add no space\n");
+	printf("idx add SPLIT %s\n", entry->e2d_name);
 
 	memset(&info, 0, sizeof(info));
 	if (ext2fs_htree_find_leaf(dvp, entry->e2d_name, entry->e2d_namlen,
