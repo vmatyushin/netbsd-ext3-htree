@@ -195,7 +195,7 @@ ext2fs_htree_find_leaf(struct vnode *vp, const char *name, int namelen,
 	if (rootp->h_info.h_hash_version != EXT2_HTREE_LEGACY &&
 		rootp->h_info.h_hash_version != EXT2_HTREE_HALF_MD4 &&
 		rootp->h_info.h_hash_version != EXT2_HTREE_TEA)
-		goto htree_find_leaf_finish;
+		goto htree_find_leaf_error;
 
 	hash_version = rootp->h_info.h_hash_version;
 	if (hash_version <= EXT2_HTREE_TEA)
@@ -210,19 +210,19 @@ ext2fs_htree_find_leaf(struct vnode *vp, const char *name, int namelen,
 	*hash = hash_major;
 
 	if ((levels = rootp->h_info.h_ind_levels) > 1)
-		goto htree_find_leaf_finish;
+		goto htree_find_leaf_error;
 
 	entp = (struct ext2fs_htree_entry *) (((char *) &rootp->h_info) +
 						rootp->h_info.h_info_len);
 
 	if (ext2fs_htree_get_limit(entp) !=
 		ext2fs_htree_root_limit(VTOI(vp), rootp->h_info.h_info_len))
-		goto htree_find_leaf_finish;
+		goto htree_find_leaf_error;
 
 	while (1) {
 		cnt = ext2fs_htree_get_count(entp);
 		if ((cnt == 0) || (cnt > ext2fs_htree_get_limit(entp)))
-			goto htree_find_leaf_finish;
+			goto htree_find_leaf_error;
 
 		start = entp + 1;
 		end = entp + cnt - 1;
@@ -245,17 +245,17 @@ ext2fs_htree_find_leaf(struct vnode *vp, const char *name, int namelen,
 		if (ext2fs_blkatoff(vp,
 			ext2fs_htree_get_block(found) * m_fs->e2fs_bsize,
 			NULL, &bp) != 0)
-			goto htree_find_leaf_finish;
+			goto htree_find_leaf_error;
 		entp = ((struct ext2fs_htree_node *) bp->b_data)->h_entries;
 		info->h_levels_num++;
 		info->h_levels[info->h_levels_num - 1].h_bp = bp;
 
 		if (ext2fs_htree_get_limit(entp) !=
 			ext2fs_htree_node_limit(VTOI(vp)))
-			goto htree_find_leaf_finish;
+			goto htree_find_leaf_error;
 	}
 
-htree_find_leaf_finish:
+htree_find_leaf_error:
 	ext2fs_htree_release(info);
 	return (-1);
 }
