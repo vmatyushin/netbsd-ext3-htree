@@ -434,8 +434,6 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 	char *dest;
 	struct ext2fs_htree_sort_entry *sort_info, dummy;
 
-	int moved = 0;
-
 	ep = (struct ext2fs_direct *) block1;
 	dest = block2;
 	sort_info = (struct ext2fs_htree_sort_entry *)
@@ -500,8 +498,6 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 		 */
 		ep->e2d_ino = 0;
 		dest += entry_len;
-
-		moved++;
 	}
 	dest -= entry_len;
 
