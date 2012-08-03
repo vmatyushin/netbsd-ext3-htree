@@ -801,7 +801,7 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 {
 	struct ext2fs_htree_entry *entries, *leaf_node;
 	struct ext2fs_htree_lookup_info info;
-	struct buf *bp;
+	struct buf *bp = NULL;
 	struct ext2fs *fs;
 	struct m_ext2fs *m_fs;
 	struct inode *ip;
@@ -819,46 +819,48 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	m_fs = ip->i_e2fs;
 	blksize = m_fs->e2fs_bsize;
 
-	//printf("add at offset %u\n", ulr->ulr_offset);
-	if (ulr->ulr_count != 0) {
-		printf("idx add cnt %s %u\n", entry->e2d_name, ulr->ulr_count);
+	if (ulr->ulr_count != 0)
 		return ext2fs_add_entry(dvp, ulr, entry);
-	}
-	printf("idx add SPLIT %s\n", entry->e2d_name);
 
+	/*
+	 * Target directory block is full, split it.
+	 */
 	memset(&info, 0, sizeof(info));
-	if (ext2fs_htree_find_leaf(dvp, entry->e2d_name, entry->e2d_namlen,
-			       &dirhash, &hash_version, &info))
-		return -1;
-	printf("found at hash 0x%08X, ver %u\n", dirhash, hash_version);
+	error = ext2fs_htree_find_leaf(dvp, entry->e2d_name, entry->e2d_namlen,
+				       &dirhash, &hash_version, &info));
+	if (error)
+		return (error);
+
 	entries = info.h_levels[info.h_levels_num - 1].h_entries;
 	if (ext2fs_htree_get_count(entries) == ext2fs_htree_get_limit(entries)) {
-		printf("ENTRIES LIMIT %u\n", ext2fs_htree_get_count(entries));
-		ext2fs_htree_release(&info);
-		return -1;
+		error = -1;
+		goto htree_add_entry_error; // XXX implement node splitting
 	}
 
 	leaf_node = info.h_levels[info.h_levels_num - 1].h_entry;
 	blknum = ext2fs_htree_get_block(leaf_node);
-	//printf("look %u %u\n", blknum, blknum * blksize);
-	if ((error = ext2fs_blkatoff(dvp, blknum * blksize,
-		NULL, &bp)) != 0) {
-		printf("lookup: blkatoff error\n");
-		return -1; // XXX
-	}
+	error = ext2fs_blkatoff(dvp, blknum * blksize, NULL, &bp);
+	if (error)
+		goto htree_add_entry_error;
 
+	/*
+	 * Split target directory block.
+	 */
 	newblock = kmem_zalloc(blksize, KM_SLEEP);
-	printf("will split\n");
 	ext2fs_htree_split_dirblock((char* ) bp->b_data, newblock, blksize,
 				    fs->e2fs_hash_seed, hash_version,
 				    &split_hash, entry);
 	cursize = roundup(ext2fs_size(ip), blksize);
 	dirsize = roundup(ext2fs_size(ip), blksize) + blksize;
 	blknum = dirsize / blksize - 1;
-	printf("split ok, cursize %ld, newsize %ld, blknum %u\n",
-	       cursize, dirsize, blknum);
+	/*
+	 * Add index entry for the new directory block.
+	 */
 	ext2fs_htree_insert_entry(&info, split_hash, blknum);
 
+	/*
+	 * Write the new directory block to the end of the directory.
+	 */
 	auio.uio_offset = cursize;
 	auio.uio_resid = blksize;
 	aiov.iov_len = blksize;
@@ -871,29 +873,30 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	if (!error) {
 		error = ext2fs_setsize(ip, dirsize);
 		if (error)
-			// XXX proper 
-			return -1;
+			goto htree_add_entry_error;
 		uvm_vnp_setsize(dvp, ext2fs_size(ip));
-		printf("wrote new block\n");
 	}
 
+	/*
+	 * Write target directory block.
+	 */
 	error = VOP_BWRITE(bp->b_vp, bp);
+	if (error)
+		goto htree_add_entry_error;
 	ip->i_flag |= IN_CHANGE | IN_UPDATE;
-	printf("wrote orig block\n");
 
+	/*
+	 * Write index blocks.
+	 */
 	error = ext2fs_htree_writebuf(&info);
-	if (error) {
-		// XXX proper
-		printf("error saving\n");
-		return -1;
-	}
+	if (error)
+		goto htree_add_entry_error;
 
+htree_add_entry_error:
 	ext2fs_htree_release(&info);
 	if (bp != NULL)
 		brelse(bp, 0);
-	kmem_free(newblock, blksize);
-
-	/* There is no space in target directory block, split it. */
-	printf("idx add no space OK\n");
-	return (0);
+	if (newblock != NULL)
+		kmem_free(newblock, blksize);
+	return (error);
 }
