@@ -424,7 +424,6 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 			    uint32_t *split_hash, struct ext2fs_direct *entry)
 {
 	int entry_cnt = 0;
-	int move_cnt = 0;
 	int size = 0;
 	int i, k;
 	uint32_t offset;
@@ -474,7 +473,6 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 		if (sort_info[i].h_size + size > blksize / 2)
 			break;
 		size += sort_info[i].h_size;
-		move_cnt++;
 	}
 
 	*split_hash = sort_info[i + 1].h_hash;
