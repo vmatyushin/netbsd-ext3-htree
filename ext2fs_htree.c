@@ -621,9 +621,9 @@ ext2fs_htree_create_index(struct vnode *vp, struct componentname *cnp,
 	 * Write directory block 0.
 	 */
 	error = VOP_BWRITE(bp->b_vp, bp);
+	dp->i_flag |= IN_CHANGE | IN_UPDATE;
 	if (error)
 		goto htree_create_index_finish;
-	dp->i_flag |= IN_CHANGE | IN_UPDATE;
 
 	/*
 	 * Write directory block 1.
@@ -760,9 +760,9 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	 * Write target directory block.
 	 */
 	error = VOP_BWRITE(bp->b_vp, bp);
+	ip->i_flag |= IN_CHANGE | IN_UPDATE;
 	if (error)
 		goto htree_add_entry_finish;
-	ip->i_flag |= IN_CHANGE | IN_UPDATE;
 
 	/*
 	 * Write index blocks.
