@@ -134,6 +134,7 @@ int ext2fs_search_dirblock(struct vnode *, void *, int *, const char *, int,
 		       struct ufs_lookup_results *);
 int ext2fs_add_entry(struct vnode *, const struct ufs_lookup_results *,
 		     struct ext2fs_direct *);
+int ext2fs_is_dot_entry(struct componentname *);
 
 /* ext2fs_subr.c */
 int ext2fs_blkatoff(struct vnode *, off_t, char **, struct buf **);

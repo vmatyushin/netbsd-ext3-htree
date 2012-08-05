@@ -118,6 +118,15 @@ ext2fs_dirconv2ffs(struct ext2fs_direct *e2dir, struct dirent *ffsdir)
 	ffsdir->d_reclen = _DIRENT_SIZE(ffsdir);
 }
 
+int
+ext2fs_is_dot_entry(struct componentname *cnp)
+{
+	if ((cnp->cn_namelen <= 2) && (cnp->cn_nameptr[0] == '.') &&
+		((cnp->cn_nameptr[1] == '.') || (cnp->cn_nameptr[1] == 0)))
+		return (1);
+	return (0);
+}
+
 /*
  * Vnode op for reading directories.
  *
@@ -295,7 +304,6 @@ ext2fs_lookup(void *v)
 	flags = cnp->cn_flags;
 	bmask = vdp->v_mount->mnt_stat.f_iosize - 1;
 	bp = NULL;
-	ss.slotoffset = -1;
 	*vpp = NULL;
 
 	/*
@@ -333,6 +341,7 @@ ext2fs_lookup(void *v)
 	 * case it doesn't already exist.
 	 */
 	ss.slotstatus = FOUND;
+	ss.slotoffset = -1;
 	ss.slotfreespace = ss.slotsize = ss.slotneeded = 0;
 	if ((nameiop == CREATE || nameiop == RENAME) &&
 	    (flags & ISLASTCN)) {
@@ -344,9 +353,7 @@ ext2fs_lookup(void *v)
 	 * Perform entry lookup using HTree directory index.
 	 * Perform linear search for '.' and '..' entries.
 	 */
-	if (!((cnp->cn_namelen <= 2) && (cnp->cn_nameptr[0] == '.') &&
-		((cnp->cn_nameptr[1] == '.') || (cnp->cn_nameptr[1] == 0))) &&
-		ext2fs_htree_has_idx(dp)) {
+	if ((!ext2fs_is_dot_entry(cnp)) && ext2fs_htree_has_idx(dp)) {
 		doff_t entry_offset;
 		error = ext2fs_htree_lookup(vdp,
 					    cnp->cn_nameptr, cnp->cn_namelen,

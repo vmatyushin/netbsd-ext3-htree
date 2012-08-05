@@ -50,6 +50,7 @@ __KERNEL_RCSID(0, "$NetBSD: ext2fs_rename.c,v 1.4 2012/06/04 20:13:47 riastradh 
 #include <ufs/ext2fs/ext2fs.h>
 #include <ufs/ext2fs/ext2fs_dir.h>
 #include <ufs/ext2fs/ext2fs_extern.h>
+#include <ufs/ext2fs/ext2fs_htree.h>
 #include <ufs/ufs/inode.h>
 #include <ufs/ufs/ufs_extern.h>
 #include <ufs/ufs/ufsmount.h>
@@ -482,6 +483,49 @@ ext2fs_gro_rename(struct mount *mp, kauth_cred_t cred,
 		if (error)	/* XXX Try to back out changes?  */
 			goto whymustithurtsomuch;
 #endif
+	}
+
+	if (!reparent_p && (tvp == NULL) && ext2fs_htree_has_idx(VTOI(fdvp)) &&
+		!ext2fs_is_dot_entry(fcnp)) {
+		/*
+		 * If the source and the target entry are in the same
+		 * indexed directory and in the same directory block,
+		 * adding target entry may split the block and move the source
+		 * entry to the new block.
+		 * Repeat lookup for the source entry to update fulr.
+		 */
+		doff_t entry_offset, prevoff, enduseful;
+		struct ext2fs_searchslot ss;
+		struct ext2fs_direct *ep;
+		struct buf *bp = NULL;
+		u_long bmask;
+		uint32_t blksize;
+
+		bmask = fdvp->v_mount->mnt_stat.f_iosize - 1;
+		blksize = VTOI(fdvp)->i_e2fs->e2fs_bsize;
+		ss.slotstatus = FOUND;
+
+		error = ext2fs_htree_lookup(fdvp,
+					    fcnp->cn_nameptr, fcnp->cn_namelen,
+					    &entry_offset, &prevoff, &enduseful,
+					    &bp, &ss, fulr);
+		switch (error) {
+		case EXT2_HTREE_LOOKUP_FOUND:
+			ep = (struct ext2fs_direct *) ((char *) bp->b_data +
+							(entry_offset & bmask));
+			fulr->ulr_reclen = fs2h16(ep->e2d_reclen);
+			if ((fulr->ulr_offset & (blksize - 1)) == 0)
+				fulr->ulr_count = 0;
+			else
+				fulr->ulr_count = fulr->ulr_offset - prevoff;
+			brelse(bp, 0);
+			break;
+		default:
+			brelse(bp, 0);
+			error = -1;
+			goto whymustithurtsomuch;
+			break;
+		}
 	}
 
 	error = ext2fs_dirremove(fdvp, fulr, fcnp);
