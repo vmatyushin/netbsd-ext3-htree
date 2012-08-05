@@ -351,7 +351,6 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 		}
 
 		results->ulr_offset = blknum * m_fs->e2fs_bsize;
-// 		printf("idx will search %s at %u\n", name, results->ulr_offset);
 		*offp = 0;
 		*prevoffp = results->ulr_offset;
 		*endusefulp = results->ulr_offset;
@@ -371,7 +370,6 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 		if (found) {
 			*bpp = bp;
 			ext2fs_htree_release(&info);
-// 			printf("idx %s found at %u\n", name, results->ulr_offset);
 			return (EXT2_HTREE_LOOKUP_FOUND);
 		}
 
@@ -379,7 +377,6 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 		search_next = ext2fs_htree_check_next(vp, dirhash, name, &info);
 	} while (search_next);
 
-// 	printf("idx %s not found\n", name);
 	ext2fs_htree_release(&info);
 	return (EXT2_HTREE_LOOKUP_NOT_FOUND);
 }
@@ -487,18 +484,13 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 	if (*split_hash == sort_info[i].h_hash)
 		*split_hash += 1;
 
-// 	char buf[100] = {0};
 	/*
 	 * Move half of directory entries from block 1 to block 2.
 	 */
-// 	printf("\nmoving %d entries\n", entry_cnt - (i + 1));
 	for (k = i + 1; k < entry_cnt; k++) {
 		ep = (struct ext2fs_direct *) ((char *) block1 +
 			sort_info[k].h_offset);
-// 		snprintf(buf, ep->e2d_namlen + 1, ep->e2d_name);
 		entry_len = EXT2FS_DIRSIZ(ep->e2d_namlen);
-// 		printf("move %s, ino %u, rlen %u, tlen %u\n", buf, ep->e2d_ino,
-// 		       ep->e2d_reclen, entry_len);
 		memcpy(dest, ep, entry_len);
 		((struct ext2fs_direct *) dest)->e2d_reclen = h2fs16(entry_len);
 		/*
@@ -508,7 +500,6 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 		dest += entry_len;
 	}
 	dest -= entry_len;
-// 	printf("\n");
 
 	/*
 	 * Shrink directory entries in block 1.
@@ -715,8 +706,6 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	m_fs = ip->i_e2fs;
 	blksize = m_fs->e2fs_bsize;
 
-// 	printf("idx add %s [off %u, cnt %u]\n", cnp->cn_nameptr,
-// 	       ulr->ulr_offset, ulr->ulr_count);
 	if (ulr->ulr_count != 0)
 		return ext2fs_add_entry(dvp, ulr, entry);
 
@@ -732,8 +721,6 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	entries = info.h_levels[info.h_levels_num - 1].h_entries;
 	ent_num = ext2fs_htree_get_count(entries);
 	if (ent_num == ext2fs_htree_get_limit(entries)) {
-		printf("LIMIT! level %u, cnt %u\n", info.h_levels_num - 1,
-		       ext2fs_htree_get_count(entries));
 		/*
 		 * Split the index node.
 		 */
@@ -837,7 +824,6 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	if (error)
 		goto htree_add_entry_finish;
 
-	printf("split block at off %u\n", blknum * blksize);
 	/*
 	 * Split target directory block.
 	 */
@@ -852,7 +838,6 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	 * Add index entry for the new directory block.
 	 */
 	ext2fs_htree_insert_entry(&info, split_hash, blknum);
-	printf("new block at off %lu, idxnum %u\n", cursize, blknum);
 
 	/*
 	 * Write the new directory block to the end of the directory.
