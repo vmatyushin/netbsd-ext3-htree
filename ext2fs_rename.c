@@ -486,7 +486,8 @@ ext2fs_gro_rename(struct mount *mp, kauth_cred_t cred,
 	}
 
 	if (!reparent_p && (tvp == NULL) && ext2fs_htree_has_idx(VTOI(fdvp)) &&
-		!ext2fs_is_dot_entry(fcnp)) {
+		!ext2fs_is_dot_entry(fcnp) &&
+		VTOI(tdvp)->inode_ext.e2fs.ext2fs_split_blk) {
 		/*
 		 * If the source and the target entry are in the same
 		 * indexed directory and in the same directory block,

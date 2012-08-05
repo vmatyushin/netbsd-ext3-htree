@@ -862,6 +862,8 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	if (error)
 		goto htree_add_entry_finish;
 
+	ip->inode_ext.e2fs.ext2fs_split_blk = 1;
+
 htree_add_entry_finish:
 	ext2fs_htree_release(&info);
 	if (bp != NULL)

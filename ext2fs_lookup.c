@@ -314,6 +314,8 @@ ext2fs_lookup(void *v)
 	results = &dp->i_crap;
 	dp->i_crapcounter++;
 
+	dp->inode_ext.e2fs.ext2fs_split_blk = 0;
+
 	/*
 	 * Check accessiblity of directory.
 	 */
