@@ -36,7 +36,6 @@ ext2fs_htree_has_idx(struct inode *ip)
 static uint16_t
 ext2fs_htree_get_limit(struct ext2fs_htree_entry *ep)
 {
-// 	printf("limit %u\n", fs2h16(((struct ext2fs_htree_count *)(ep))->h_entries_max));
 	return fs2h16(((struct ext2fs_htree_count *)(ep))->h_entries_max);
 }
 
@@ -52,7 +51,6 @@ ext2fs_htree_set_limit(struct ext2fs_htree_entry *ep, uint16_t limit)
 static uint16_t
 ext2fs_htree_get_count(struct ext2fs_htree_entry *ep)
 {
-// 	printf("count %u\n", fs2h16(((struct ext2fs_htree_count *)(ep))->h_entries_num));
 	return fs2h16(((struct ext2fs_htree_count *)(ep))->h_entries_num);
 }
 
@@ -65,7 +63,6 @@ ext2fs_htree_set_count(struct ext2fs_htree_entry *ep, uint16_t count)
 static uint32_t
 ext2fs_htree_get_block(struct ext2fs_htree_entry *ep)
 {
-// 	printf("blk %u\n", fs2h32(ep->h_blk) & 0x00FFFFFF);
 	return fs2h32(ep->h_blk) & 0x00FFFFFF;
 }
 
@@ -78,14 +75,12 @@ ext2fs_htree_set_block(struct ext2fs_htree_entry *ep, uint32_t blk)
 static uint32_t
 ext2fs_htree_get_hash(struct ext2fs_htree_entry *ep)
 {
-// 	printf("hash 0x%8X\n", fs2h32(ep->h_hash));
 	return fs2h32(ep->h_hash);
 }
 
 static void
 ext2fs_htree_set_hash(struct ext2fs_htree_entry *ep, uint32_t hash)
 {
-// 	printf("hash 0x%8X\n", fs2h32(ep->h_hash));
 	ep->h_hash = h2fs32(hash);
 }
 
@@ -98,7 +93,7 @@ ext2fs_htree_root_limit(struct inode *ip, int len)
 	fs = ip->i_e2fs;
 	space = fs->e2fs_bsize - EXT2FS_DIRSIZ(1) -
 		EXT2FS_DIRSIZ(2) - len;
-// 	printf("root limit %lu\n", (space / sizeof(struct ext2fs_htree_entry)));
+
 	return (space / sizeof(struct ext2fs_htree_entry));
 }
 
@@ -110,7 +105,7 @@ ext2fs_htree_node_limit(struct inode *ip)
 
 	fs = ip->i_e2fs;
 	space = fs->e2fs_bsize - EXT2FS_DIRSIZ(0);
-// 	printf("node limit %lu\n", (space / sizeof(struct ext2fs_htree_entry)));
+
 	return (space / sizeof(struct ext2fs_htree_entry));
 }
 
@@ -140,18 +135,13 @@ ext2fs_htree_writebuf(struct ext2fs_htree_lookup_info *info)
 	return (0);
 }
 
-/*
- * Insert an index entry to the index node.
- */
 static void
-ext2fs_htree_insert_entry(struct ext2fs_htree_lookup_info *info,
-			  uint32_t hash, uint32_t blk)
+ext2fs_htree_insert_entry_to_level(struct ext2fs_htree_lookup_level *level,
+				   uint32_t hash, uint32_t blk)
 {
-	struct ext2fs_htree_lookup_level *level;
 	struct ext2fs_htree_entry *target;
 	int entries_num;
 
-	level = &info->h_levels[info->h_levels_num - 1];
 	target = level->h_entry + 1;
 	entries_num = ext2fs_htree_get_count(level->h_entries);
 
@@ -160,6 +150,18 @@ ext2fs_htree_insert_entry(struct ext2fs_htree_lookup_info *info,
 	ext2fs_htree_set_block(target, blk);
 	ext2fs_htree_set_hash(target, hash);
 	ext2fs_htree_set_count(level->h_entries, entries_num + 1);
+}
+
+/*
+ * Insert an index entry to the index node.
+ */
+static void
+ext2fs_htree_insert_entry(struct ext2fs_htree_lookup_info *info,
+			  uint32_t hash, uint32_t blk)
+{
+	struct ext2fs_htree_lookup_level *level;
+	level = &info->h_levels[info->h_levels_num - 1];
+	ext2fs_htree_insert_entry_to_level(level, hash, blk);
 }
 
 /*
@@ -349,6 +351,7 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 		}
 
 		results->ulr_offset = blknum * m_fs->e2fs_bsize;
+// 		printf("idx will search %s at %u\n", name, results->ulr_offset);
 		*offp = 0;
 		*prevoffp = results->ulr_offset;
 		*endusefulp = results->ulr_offset;
@@ -368,6 +371,7 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 		if (found) {
 			*bpp = bp;
 			ext2fs_htree_release(&info);
+// 			printf("idx %s found at %u\n", name, results->ulr_offset);
 			return (EXT2_HTREE_LOOKUP_FOUND);
 		}
 
@@ -375,6 +379,7 @@ ext2fs_htree_lookup(struct vnode *vp, const char *name, int namelen,
 		search_next = ext2fs_htree_check_next(vp, dirhash, name, &info);
 	} while (search_next);
 
+// 	printf("idx %s not found\n", name);
 	ext2fs_htree_release(&info);
 	return (EXT2_HTREE_LOOKUP_NOT_FOUND);
 }
@@ -482,13 +487,18 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 	if (*split_hash == sort_info[i].h_hash)
 		*split_hash += 1;
 
+// 	char buf[100] = {0};
 	/*
 	 * Move half of directory entries from block 1 to block 2.
 	 */
+// 	printf("\nmoving %d entries\n", entry_cnt - (i + 1));
 	for (k = i + 1; k < entry_cnt; k++) {
 		ep = (struct ext2fs_direct *) ((char *) block1 +
 			sort_info[k].h_offset);
+// 		snprintf(buf, ep->e2d_namlen + 1, ep->e2d_name);
 		entry_len = EXT2FS_DIRSIZ(ep->e2d_namlen);
+// 		printf("move %s, ino %u, rlen %u, tlen %u\n", buf, ep->e2d_ino,
+// 		       ep->e2d_reclen, entry_len);
 		memcpy(dest, ep, entry_len);
 		((struct ext2fs_direct *) dest)->e2d_reclen = h2fs16(entry_len);
 		/*
@@ -498,6 +508,7 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 		dest += entry_len;
 	}
 	dest -= entry_len;
+// 	printf("\n");
 
 	/*
 	 * Shrink directory entries in block 1.
@@ -543,6 +554,38 @@ ext2fs_htree_split_dirblock(char *block1, char *block2, uint32_t blksize,
 	return (0);
 }
 
+static int
+ext2fs_htree_append_block(struct vnode *vp, char *data,
+			  struct componentname *cnp, uint32_t blksize)
+{
+	struct iovec aiov;
+	struct uio auio;
+	struct inode *dp = VTOI(vp);
+	uint64_t cursize, newsize;
+	int error;
+
+	cursize = roundup(ext2fs_size(dp), blksize);
+	newsize = roundup(ext2fs_size(dp), blksize) + blksize;
+
+	auio.uio_offset = cursize;
+	auio.uio_resid = blksize;
+	aiov.iov_len = blksize;
+	aiov.iov_base = data;
+	auio.uio_iov = &aiov;
+	auio.uio_iovcnt = 1;
+	auio.uio_rw = UIO_WRITE;
+	UIO_SETUP_SYSSPACE(&auio);
+	error = VOP_WRITE(vp, &auio, IO_SYNC, cnp->cn_cred);
+	if (!error) {
+		error = ext2fs_setsize(dp, newsize);
+		if (error)
+			return (error);
+		uvm_vnp_setsize(vp, ext2fs_size(dp));
+	}
+	
+	return (error);
+}
+
 /*
  * Create an HTree index for the directory.
  */
@@ -557,8 +600,6 @@ ext2fs_htree_create_index(struct vnode *vp, struct componentname *cnp,
 	struct ext2fs_direct *ep, *dotdot;
 	struct ext2fs_htree_root *root;
 	struct ext2fs_htree_lookup_info info;
-	struct iovec aiov;
-	struct uio auio;
 	uint32_t blksize, dirlen, split_hash;
 	uint8_t hash_version;
 	char *buf1 = NULL;
@@ -626,40 +667,14 @@ ext2fs_htree_create_index(struct vnode *vp, struct componentname *cnp,
 	/*
 	 * Write directory block 1.
 	 */
-	auio.uio_offset = blksize;
-	auio.uio_resid = blksize;
-	aiov.iov_len = blksize;
-	aiov.iov_base = buf1;
-	auio.uio_iov = &aiov;
-	auio.uio_iovcnt = 1;
-	auio.uio_rw = UIO_WRITE;
-	UIO_SETUP_SYSSPACE(&auio);
-	error = VOP_WRITE(vp, &auio, IO_SYNC, cnp->cn_cred);
-	if (!error) {
-		error = ext2fs_setsize(dp, roundup(ext2fs_size(dp), blksize));
-		if (error)
-			goto htree_create_index_finish;
-		uvm_vnp_setsize(vp, ext2fs_size(dp));
-	}
-	
+	error = ext2fs_htree_append_block(vp, buf1, cnp, blksize);
+	if (error)
+		goto htree_create_index_finish;
+
 	/*
 	 * Write directory block 2.
 	 */
-	auio.uio_offset = blksize * 2;
-	auio.uio_resid = blksize;
-	aiov.iov_len = blksize;
-	aiov.iov_base = buf2;
-	auio.uio_iov = &aiov;
-	auio.uio_iovcnt = 1;
-	auio.uio_rw = UIO_WRITE;
-	UIO_SETUP_SYSSPACE(&auio);
-	error = VOP_WRITE(vp, &auio, IO_SYNC, cnp->cn_cred);
-	if (!error) {
-		error = ext2fs_setsize(dp, roundup(ext2fs_size(dp), blksize));
-		if (error)
-			goto htree_create_index_finish;
-		uvm_vnp_setsize(vp, ext2fs_size(dp));
-	}
+	error = ext2fs_htree_append_block(vp, buf2, cnp, blksize);
 
 htree_create_index_finish:
 	if (bp != NULL)
@@ -682,13 +697,17 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	struct ext2fs *fs;
 	struct m_ext2fs *m_fs;
 	struct inode *ip;
-	struct iovec aiov;
-	struct uio auio;
+	uint16_t ent_num;
 	uint32_t dirhash, split_hash;
 	uint32_t blksize, blknum;
 	uint64_t cursize, dirsize;
 	uint8_t hash_version;
-	char *newblock = NULL;
+	char *newdirblock = NULL;
+	char *newidxblock = NULL;
+	struct ext2fs_htree_node *dst_node;
+	struct ext2fs_htree_entry *dst_entries;
+	struct ext2fs_htree_entry *root_entries;
+	struct buf *dst_bp = NULL;
 	int error;
 
 	ip = VTOI(dvp);
@@ -696,6 +715,8 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	m_fs = ip->i_e2fs;
 	blksize = m_fs->e2fs_bsize;
 
+// 	printf("idx add %s [off %u, cnt %u]\n", cnp->cn_nameptr,
+// 	       ulr->ulr_offset, ulr->ulr_count);
 	if (ulr->ulr_count != 0)
 		return ext2fs_add_entry(dvp, ulr, entry);
 
@@ -709,9 +730,105 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 		return (error);
 
 	entries = info.h_levels[info.h_levels_num - 1].h_entries;
-	if (ext2fs_htree_get_count(entries) == ext2fs_htree_get_limit(entries)) {
-		error = -1;
-		goto htree_add_entry_finish; // XXX implement node splitting
+	ent_num = ext2fs_htree_get_count(entries);
+	if (ent_num == ext2fs_htree_get_limit(entries)) {
+		printf("LIMIT! level %u, cnt %u\n", info.h_levels_num - 1,
+		       ext2fs_htree_get_count(entries));
+		/*
+		 * Split the index node.
+		 */
+		root_entries = info.h_levels[0].h_entries;
+		newidxblock = kmem_zalloc(blksize, KM_SLEEP);
+		dst_node = (struct ext2fs_htree_node *) newidxblock;
+		dst_entries = dst_node->h_entries;
+		memset(&dst_node->h_fake_dirent, 0,
+		       sizeof(dst_node->h_fake_dirent));
+		dst_node->h_fake_dirent.e2d_reclen = h2fs16(blksize);
+
+		cursize = roundup(ext2fs_size(ip), blksize);
+		dirsize = roundup(ext2fs_size(ip), blksize) + blksize;
+		blknum = dirsize / blksize - 1;
+
+		error = ext2fs_htree_append_block(dvp, newidxblock,
+						  cnp, blksize);
+		if (error)
+			goto htree_add_entry_finish;
+		error = ext2fs_blkatoff(dvp, cursize, NULL, &dst_bp);
+		if (error)
+			goto htree_add_entry_finish;
+		dst_node = (struct ext2fs_htree_node *) dst_bp->b_data;
+		dst_entries = dst_node->h_entries;
+
+		if (info.h_levels_num == 2) {
+			if (ext2fs_htree_get_count(root_entries) ==
+				ext2fs_htree_get_limit(root_entries)) {
+				/*
+				 * Directory index is full.
+				 */
+				error = EIO;
+				goto htree_add_entry_finish;
+			}
+
+			uint16_t src_ent_num = ent_num / 2;
+			uint16_t dst_ent_num = ent_num - src_ent_num;
+			split_hash = ext2fs_htree_get_hash(entries + src_ent_num);
+
+			/*
+			 * Move half of index entries to the new index node.
+			 */
+			memcpy(dst_entries, entries + src_ent_num,
+			       dst_ent_num * sizeof(struct ext2fs_htree_entry));
+			ext2fs_htree_set_count(entries, src_ent_num);
+			ext2fs_htree_set_count(dst_entries, dst_ent_num);
+			ext2fs_htree_set_limit(dst_entries,
+					       ext2fs_htree_node_limit(ip));
+
+			if (info.h_levels[1].h_entry >= entries + src_ent_num) {
+				struct buf *tmp = info.h_levels[1].h_bp;
+				info.h_levels[1].h_bp = dst_bp;
+				dst_bp = tmp;
+
+				info.h_levels[1].h_entry =
+					info.h_levels[1].h_entry -
+					(entries + src_ent_num) +
+					dst_entries;
+				info.h_levels[1].h_entries = dst_entries;
+			}
+			ext2fs_htree_insert_entry_to_level(&info.h_levels[0],
+							   split_hash, blknum);
+
+			/*
+			 * Write new index node to disk.
+			 */
+			error = VOP_BWRITE(dst_bp->b_vp, dst_bp);
+			ip->i_flag |= IN_CHANGE | IN_UPDATE;
+			if (error)
+				goto htree_add_entry_finish;
+			brelse(dst_bp, 0);
+			dst_bp = NULL;
+		} else {
+			/*
+			 * Create second level for HTree index.
+			 */
+			memcpy(dst_entries, entries,
+			       ent_num * sizeof(struct ext2fs_htree_entry));
+			ext2fs_htree_set_limit(dst_entries,
+					       ext2fs_htree_node_limit(ip));
+
+			struct ext2fs_htree_root *idx_root =
+				(struct ext2fs_htree_root *) info.h_levels[0].h_bp->b_data;
+			idx_root->h_info.h_ind_levels = 1;
+
+			ext2fs_htree_set_count(entries, 1);
+			ext2fs_htree_set_block(entries, blknum);
+
+			info.h_levels_num = 2;
+			info.h_levels[1].h_entries = dst_entries;
+			info.h_levels[1].h_entry = info.h_levels[0].h_entry -
+						info.h_levels[0].h_entries +
+						dst_entries;
+			info.h_levels[1].h_bp = dst_bp;
+		}
 	}
 
 	leaf_node = info.h_levels[info.h_levels_num - 1].h_entry;
@@ -720,11 +837,12 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	if (error)
 		goto htree_add_entry_finish;
 
+	printf("split block at off %u\n", blknum * blksize);
 	/*
 	 * Split target directory block.
 	 */
-	newblock = kmem_zalloc(blksize, KM_SLEEP);
-	ext2fs_htree_split_dirblock((char* ) bp->b_data, newblock, blksize,
+	newdirblock = kmem_zalloc(blksize, KM_SLEEP);
+	ext2fs_htree_split_dirblock((char* ) bp->b_data, newdirblock, blksize,
 				    fs->e2fs_hash_seed, hash_version,
 				    &split_hash, entry);
 	cursize = roundup(ext2fs_size(ip), blksize);
@@ -734,28 +852,18 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 	 * Add index entry for the new directory block.
 	 */
 	ext2fs_htree_insert_entry(&info, split_hash, blknum);
+	printf("new block at off %lu, idxnum %u\n", cursize, blknum);
 
 	/*
 	 * Write the new directory block to the end of the directory.
 	 */
-	auio.uio_offset = cursize;
-	auio.uio_resid = blksize;
-	aiov.iov_len = blksize;
-	aiov.iov_base = newblock;
-	auio.uio_iov = &aiov;
-	auio.uio_iovcnt = 1;
-	auio.uio_rw = UIO_WRITE;
-	UIO_SETUP_SYSSPACE(&auio);
-	error = VOP_WRITE(dvp, &auio, IO_SYNC, cnp->cn_cred);
-	if (!error) {
-		error = ext2fs_setsize(ip, dirsize);
-		if (error)
-			goto htree_add_entry_finish;
-		uvm_vnp_setsize(dvp, ext2fs_size(ip));
-	}
+
+	error = ext2fs_htree_append_block(dvp, newdirblock, cnp, blksize);
+	if (error)
+		goto htree_add_entry_finish;
 
 	/*
-	 * Write target directory block.
+	 * Write the target directory block.
 	 */
 	error = VOP_BWRITE(bp->b_vp, bp);
 	ip->i_flag |= IN_CHANGE | IN_UPDATE;
@@ -763,7 +871,7 @@ ext2fs_htree_add_entry(struct vnode *dvp, const struct ufs_lookup_results *ulr,
 		goto htree_add_entry_finish;
 
 	/*
-	 * Write index blocks.
+	 * Write the index blocks.
 	 */
 	error = ext2fs_htree_writebuf(&info);
 	if (error)
@@ -773,7 +881,11 @@ htree_add_entry_finish:
 	ext2fs_htree_release(&info);
 	if (bp != NULL)
 		brelse(bp, 0);
-	if (newblock != NULL)
-		kmem_free(newblock, blksize);
+	if (dst_bp != NULL)
+		brelse(dst_bp, 0);
+	if (newdirblock != NULL)
+		kmem_free(newdirblock, blksize);
+	if (newidxblock != NULL)
+		kmem_free(newidxblock, blksize);
 	return (error);
 }
